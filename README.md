@@ -14,7 +14,7 @@ ACSE Animation Changer is a tool designed to manage and replace boot animations 
 
 ### Pre-built Binary
 
-A pre-built binary is available in the [releases](https://github.com/yourusername/acse-animation-changer/releases) section. Simply download the zip file, unzip it, and run the `app.exe` file.
+A pre-built binary is available in the [releases](https://github.com/corando98/acseanimationchanger/releases) section. Simply download the zip file, unzip it, and run the `app.exe` file.
 
 
 
