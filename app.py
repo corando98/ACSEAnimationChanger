@@ -4,6 +4,7 @@ import threading
 import requests
 import urllib3
 import webbrowser
+import shutil
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
 from moviepy.editor import VideoFileClip
 from werkzeug.serving import make_server
@@ -25,14 +26,14 @@ if not os.path.exists(UPLOAD_FOLDER):
 # Disable SSL warnings
 urllib3.disable_warnings()
 
-# Embed the HTML template
+# Embed the HTML template (empty for now)
 html_template = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Preview and Convert</title>
+    <title>ACSE Animation Changer</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -149,10 +150,22 @@ html_template = """
         .quit-button:hover {
             background-color: #d11a1a;
         }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
     </style>
 </head>
 <body class="dark-mode">
-    <h1>Video Preview and Convert</h1>
+    <h1>ACSE Animation Changer</h1>
     <button class="quit-button" onclick="quitProgram()">Quit</button>
     <div class="tab">
         <button class="tablinks" onclick="openTab(event, 'Download')">Download Videos</button>
@@ -168,8 +181,8 @@ html_template = """
         <div class="sort-options">
             <label for="sort">Sort by:</label>
             <select id="sort" onchange="changeSort()">
-                <option value="trending">Trending</option>
                 <option value="downloads-desc">Most Downloaded</option>
+                <option value="trending">Trending</option>
                 <option value="likes-desc">Most Liked</option>
                 <option value="created_at-desc">Uploaded (Newest)</option>
                 <option value="created_at-asc">Uploaded (Oldest)</option>
@@ -185,15 +198,19 @@ html_template = """
 
     <div id="Manage" class="tabcontent">
         <h2>Downloaded Videos</h2>
+        <div class="form-group">
+            <label for="replacePath">Replace Path:</label>
+            <input type="text" id="replacePath" placeholder="Specify the path to replace or leave empty to auto-detect">
+        </div>
         <div id="video-list" class="video-grid">
             {% for video in videos %}
             <div class="video-item" id="{{ video }}-item">
-                <h2>{{ video }}</h2>
+                <h2>{{ video.replace('.webm', '') }}</h2>
                 <video controls>
                     <source src="{{ url_for('preview', filename=video) }}" type="video/webm">
                     Your browser does not support the video tag.
                 </video>
-                <button onclick="convertVideo('{{ video }}')">Convert to MP4 and Replace</button>
+                <button onclick="replaceVideo('{{ video }}')">Replace</button>
                 <button onclick="deleteVideo('{{ video }}')">Delete</button>
             </div>
             {% endfor %}
@@ -277,14 +294,15 @@ html_template = """
             location.reload();
         }
 
-        async function convertVideo(filename) {
-            console.log(`Converting video: ${filename}`);
-            const response = await fetch('/convert', {
+        async function replaceVideo(filename) {
+            console.log(`Replacing video: ${filename}`);
+            const replacePath = document.getElementById('replacePath').value;
+            const response = await fetch('/convert_replace', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ filename })
+                body: JSON.stringify({ filename, replacePath })
             });
             const data = await response.json();
             alert(data.message);
@@ -325,23 +343,40 @@ html_template = """
         document.addEventListener('DOMContentLoaded', () => {
             fetchExternalVideos();
             document.querySelector('.tablinks').click();
+            document.getElementById('sort').value = 'downloads-desc'; // Default to Most Downloaded
+            changeSort();
         });
     </script>
 </body>
 </html>
+
 """
 
-# Function to render the embedded HTML template
-@app.route('/')
-def index():
-    videos = [f for f in os.listdir(app.config['UPLOAD_FOLDER']) if f.endswith('.webm')]
-    print(f"Listing downloaded videos: {videos}")
-    return render_template_string(html_template, videos=videos)
+def sanitize_filename(filename):
+    return "".join(c for c in filename if c.isalnum() or c in (' ', '.', '_', '-')).rstrip()
+
+def download_video(url, path):
+    print(f"Downloading video from {url} to {path}")
+    response = requests.get(url, stream=True, verify=False)
+    with open(path, 'wb') as file:
+        for chunk in response.iter_content(chunk_size=1024):
+            if chunk:
+                file.write(chunk)
+    print(f"Finished downloading video from {url}")
+
+def find_dynamic_path():
+    user_profile = os.environ['USERPROFILE']
+    base_path = os.path.join(user_profile, 'AppData', 'Local', 'Packages')
+    target_filename = 'Starfield_backup.mp4'
+    for root, dirs, files in os.walk(base_path):
+        if target_filename in files:
+            return os.path.join(root, target_filename)
+    return None
 
 @app.route('/fetch_videos')
 def fetch_videos_route():
     page = request.args.get('page', 1, type=int)
-    sort = request.args.get('sort', 'trending')
+    sort = request.args.get('sort', 'downloads-desc')
     search = request.args.get('search', '')
     search_query = f"&search={search}" if search else ""
     url = f'https://steamdeckrepo.com/api/posts?page={page}&sort={sort}{search_query}'
@@ -355,19 +390,40 @@ def fetch_videos_route():
 def preview(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-@app.route('/convert', methods=['POST'])
-def convert():
+@app.route('/convert_replace', methods=['POST'])
+def convert_replace():
     data = request.json
-    webm_path = os.path.join(app.config['UPLOAD_FOLDER'], data['filename'])
+    filename = data['filename']
+    target_path = data.get('replacePath') or find_dynamic_path()
+    
+    if not target_path:
+        return jsonify({'status': 'error', 'message': 'Target path not found'})
+    
+    webm_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     mp4_path = webm_path.replace('.webm', '.mp4')
+    
     if not os.path.exists(mp4_path):
-        print(f"Converting {webm_path} to {mp4_path}")
-        clip = VideoFileClip(webm_path)
-        clip.write_videofile(mp4_path, codec='libx264')
-        print(f"Finished converting {webm_path} to {mp4_path}")
-    else:
-        print(f"File {mp4_path} already exists. Skipping conversion.")
-    return jsonify({'status': 'success', 'message': 'Video converted successfully'})
+        try:
+            print(f"Converting {webm_path} to {mp4_path}")
+            clip = VideoFileClip(webm_path)
+            clip.write_videofile(mp4_path, codec='libx264')
+            print(f"Finished converting {webm_path} to {mp4_path}")
+        except Exception as e:
+            print(f"Error during conversion: {e}")
+            return jsonify({'status': 'error', 'message': str(e)})
+    
+    print(f"Replacing {target_path} with {mp4_path}")
+    
+    try:
+        if os.path.exists(target_path):
+            os.remove(target_path)
+            print(f"Removed existing file at {target_path}")
+        shutil.copy(mp4_path, target_path)
+        print(f"Replaced {target_path} successfully")
+        return jsonify({'status': 'success', 'message': 'Boot animation replaced!'})
+    except Exception as e:
+        print(f"Error replacing file: {e}")
+        return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/shutdown', methods=['POST'])
 def shutdown():
@@ -384,10 +440,15 @@ def download_video_route():
     data = request.json
     video_url = data['url']
     title = data['title']
-    filename = f"{title.replace(' ', '_').replace('/', '_')}.webm"
+    sanitized_title = sanitize_filename(title)
+    filename = f"{sanitized_title}.webm"
     download_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    download_video(video_url, download_path)
-    return jsonify({'status': 'success', 'message': 'Video downloaded successfully'})
+    try:
+        download_video(video_url, download_path)
+        return jsonify({'status': 'success', 'message': 'Video downloaded successfully'})
+    except Exception as e:
+        print(f"Error downloading video: {e}")
+        return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/delete_video', methods=['POST'])
 def delete_video_route():
@@ -404,6 +465,13 @@ def delete_video_route():
         return jsonify({'status': 'success', 'message': 'Video deleted successfully'})
     else:
         return jsonify({'status': 'error', 'message': 'File not found'})
+
+# Function to render the embedded HTML template
+@app.route('/')
+def index():
+    videos = [f for f in os.listdir(app.config['UPLOAD_FOLDER']) if f.endswith('.webm')]
+    print(f"Listing downloaded videos: {videos}")
+    return render_template_string(html_template, videos=videos)
 
 # Thread class for Flask server
 class FlaskThread(threading.Thread):

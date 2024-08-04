@@ -17,9 +17,9 @@ if sys.platform == "win32":
     base = "Win32GUI"
 
 setup(
-    name="FlaskApp",
+    name="ACSE Animation Changer",
     version="0.1",
-    description="My Flask App",
+    description="ACSE Animation Changer",
     options={"build_exe": build_exe_options},
     executables=[Executable("app.py", base=base)]
 )
