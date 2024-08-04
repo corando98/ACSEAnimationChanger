@@ -349,7 +349,6 @@ html_template = """
     </script>
 </body>
 </html>
-
 """
 
 def sanitize_filename(filename):
@@ -358,11 +357,14 @@ def sanitize_filename(filename):
 def download_video(url, path):
     print(f"Downloading video from {url} to {path}")
     response = requests.get(url, stream=True, verify=False)
-    with open(path, 'wb') as file:
-        for chunk in response.iter_content(chunk_size=1024):
-            if chunk:
-                file.write(chunk)
-    print(f"Finished downloading video from {url}")
+    if response.status_code == 200:
+        with open(path, 'wb') as file:
+            for chunk in response.iter_content(chunk_size=1024):
+                if chunk:
+                    file.write(chunk)
+        print(f"Finished downloading video from {url}")
+    else:
+        print(f"Failed to download video from {url}")
 
 def find_dynamic_path():
     user_profile = os.environ['USERPROFILE']

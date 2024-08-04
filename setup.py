@@ -8,7 +8,7 @@ build_exe_options = {
         "moviepy.video.fx", "moviepy.video.io", "moviepy.audio.fx", "moviepy.audio.io"
     ],
     "includes": ["jinja2.ext"],
-    "include_files": ["videos/"]
+    "include_files": ["videos/", "icon.ico"]
 }
 
 # Base is set to "Win32GUI" for a GUI application
@@ -21,5 +21,5 @@ setup(
     version="0.1",
     description="ACSE Animation Changer",
     options={"build_exe": build_exe_options},
-    executables=[Executable("app.py", base=base)]
+    executables=[Executable("app.py", base=base, icon="icon.ico")]
 )
