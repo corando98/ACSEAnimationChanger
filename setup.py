@@ -11,10 +11,8 @@ build_exe_options = {
     "include_files": ["videos/", "icon.ico"]
 }
 
-# Base is set to "Win32GUI" for a GUI application
-base = None
-if sys.platform == "win32":
-    base = "Win32GUI"
+# Base is set to "Console" to keep the console window open for debugging
+base = "Console" if sys.platform == "win32" else None
 
 setup(
     name="ACSE Animation Changer",

@@ -349,6 +349,7 @@ html_template = """
     </script>
 </body>
 </html>
+
 """
 
 def sanitize_filename(filename):
@@ -399,6 +400,7 @@ def convert_replace():
     target_path = data.get('replacePath') or find_dynamic_path()
     
     if not target_path:
+        print("Error: Target path not found")
         return jsonify({'status': 'error', 'message': 'Target path not found'})
     
     webm_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
